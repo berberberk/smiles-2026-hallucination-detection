@@ -13,7 +13,6 @@ from __future__ import annotations
 import numpy as np
 import torch
 import torch.nn as nn
-from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
 
@@ -30,13 +29,6 @@ class HallucinationProbe(nn.Module):
         self._net: nn.Sequential | None = None  # built lazily in fit()
         self._scaler = StandardScaler()
         self._threshold: float = 0.5  # tuned by fit_hyperparameters()
-        self._model = LogisticRegression(
-            C=1.0,
-            class_weight="balanced",
-            max_iter=2000,
-            solver="liblinear",
-            random_state=42,
-        )
 
     # ------------------------------------------------------------------
     # STUDENT: Replace or extend the network definition below.
@@ -50,9 +42,10 @@ class HallucinationProbe(nn.Module):
             input_dim: Feature vector dimensionality.
         """
         self._net = nn.Sequential(
-            nn.Linear(input_dim, 256),
+            nn.Linear(input_dim, 128),
             nn.ReLU(),
-            nn.Linear(256, 1),
+            nn.Dropout(0.5),
+            nn.Linear(128, 1),
         )
 
     # ------------------------------------------------------------------
@@ -94,11 +87,34 @@ class HallucinationProbe(nn.Module):
         )
         y_int = np.asarray(y).astype(int).reshape(-1)
         X_scaled = self._scaler.fit_transform(X_clean)
+        self._build_network(X_scaled.shape[1])
+
+        X_t = torch.from_numpy(X_scaled).float()
+        y_t = torch.from_numpy(y_int.astype(np.float32))
+
+        n_pos = int(y_int.sum())
+        n_neg = len(y_int) - n_pos
+        pos_weight = torch.tensor([n_neg / max(n_pos, 1)], dtype=torch.float32)
+        criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
         # ------------------------------------------------------------------
         # STUDENT: Replace or extend the training loop below.
         # ------------------------------------------------------------------
-        self._model.fit(X_scaled, y_int)
+        torch.manual_seed(42)
+        optimizer = torch.optim.AdamW(
+            self.parameters(),
+            lr=1e-3,
+            weight_decay=1e-2,
+        )
+
+        self.train()
+        for _ in range(200):
+            optimizer.zero_grad()
+            logits = self(X_t)
+            loss = criterion(logits, y_t)
+            loss.backward()
+            optimizer.step()
+        self.eval()
         # ------------------------------------------------------------------
 
         return self
@@ -157,4 +173,8 @@ class HallucinationProbe(nn.Module):
             neginf=0.0,
         )
         X_scaled = self._scaler.transform(X_clean)
-        return self._model.predict_proba(X_scaled)
+        X_t = torch.from_numpy(X_scaled).float()
+        with torch.no_grad():
+            logits = self(X_t)
+            prob_pos = torch.sigmoid(logits).numpy()
+        return np.stack([1.0 - prob_pos, prob_pos], axis=1)

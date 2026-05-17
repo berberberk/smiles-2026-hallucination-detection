@@ -13,6 +13,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 import torch.nn as nn
+from sklearn.metrics import f1_score
 from sklearn.preprocessing import StandardScaler
 
 
@@ -137,8 +138,20 @@ class HallucinationProbe(nn.Module):
         Returns:
             ``self`` (for method chaining).
         """
-        _ = X_val
-        _ = y_val
+        probs = self.predict_proba(X_val)[:, 1]
+        y_val_int = np.asarray(y_val).astype(int).reshape(-1)
+        candidates = np.unique(np.concatenate([probs, np.linspace(0.0, 1.0, 101)]))
+
+        best_threshold = 0.5
+        best_f1 = -1.0
+        for t in candidates:
+            y_pred_t = (probs >= t).astype(int)
+            score = f1_score(y_val_int, y_pred_t, zero_division=0)
+            if score > best_f1:
+                best_f1 = score
+                best_threshold = float(t)
+
+        self._threshold = best_threshold
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:

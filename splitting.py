@@ -51,20 +51,18 @@ def split_data(
         function returns the list described above.
     """
 
-    idx = np.arange(len(y))
+    idx = np.arange(len(y), dtype=int)
 
-    idx_train_val, idx_test = train_test_split(
+    idx_train, idx_temp = train_test_split(
         idx,
-        test_size=test_size,
+        test_size=0.30,
         random_state=random_state,
         stratify=y,
     )
-    relative_val = val_size / (1.0 - test_size)
-    idx_train, idx_val = train_test_split(
-        idx_train_val,
-        test_size=relative_val,
+    idx_val, idx_test = train_test_split(
+        idx_temp,
+        test_size=0.50,
         random_state=random_state,
-        stratify=y[idx_train_val],
+        stratify=y[idx_temp],
     )
     return [(idx_train, idx_val, idx_test)]
-

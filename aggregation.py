@@ -53,6 +53,8 @@ def aggregate(
     last_pos = int(real_positions[-1].item())                 # scalar index
 
     feature = layer[last_pos]          # (hidden_dim,)
+    feature = torch.nan_to_num(feature, nan=0.0, posinf=0.0, neginf=0.0)
+    feature = feature.detach().to(dtype=torch.float32, device="cpu")
 
     return feature
     # ------------------------------------------------------------------
